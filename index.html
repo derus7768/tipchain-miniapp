@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>TipChain Mini App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Optional: meta so this can be used as a Farcaster / Base mini app -->
+    <meta
+      name="fc:miniapp"
+      content='{
+        "version": "next",
+        "imageUrl": "https://your-tipchain-app.vercel.app/og-image.png",
+        "button": {
+          "title": "Open TipChain",
+          "action": {
+            "type": "launch_miniapp",
+            "name": "TipChain",
+            "url": "https://your-tipchain-app.vercel.app"
+          }
+        }
+      }'
+    />
+
+    <style>
+      * {
+        box-sizing: border-box;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+
+      body {
+        margin: 0;
+        background: #020617;
+        color: #f9fafb;
+      }
+
+      main {
+        max-width: 480px;
+        margin: 0 auto;
+        padding: 16px;
+      }
+
+      h1 {
+        font-size: 20px;
+        margin-bottom: 4px;
+      }
+
+      .subtitle {
+        font-size: 13px;
+        color: #9ca3af;
+        margin-bottom: 16px;
+      }
+
+      .card {
+        background: #020617;
+        border-radius: 12px;
+        border: 1px solid #1f2937;
+        padding: 12px 14px;
+        margin-bottom: 12px;
+      }
+
+      label {
+        display: block;
+        font-size: 12px;
+        margin-bottom: 4px;
+        color: #e5e7eb;
+      }
+
+      input,
+      textarea {
+        width: 100%;
+        padding: 7px 10px;
+        border-radius: 8px;
+        border: 1px solid #374151;
+        background: #020617;
+        color: #f9fafb;
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+
+      input:focus,
+      textarea:focus {
+        outline: 1px solid #38bdf8;
+        border-color: #38bdf8;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      .btn-primary {
+        background: #38bdf8;
+        color: #020617;
+        font-weight: 600;
+        width: 100%;
+        margin-top: 6px;
+      }
+
+      .btn-secondary {
+        background: #111827;
+        color: #e5e7eb;
+        border: 1px solid #374151;
+        width: 100%;
+        margin-top: 6px;
+      }
+
+      .small-text {
+        font-size: 11px;
+        color: #6b7280;
+        margin-top: 6px;
+      }
+
+      .highlight {
+        font-weight: 600;
+      }
+
+      .row-preview {
+        margin-top: 8px;
+        padding-top: 6px;
+        border-top: 1px dashed #1f2937;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>TipChain</h1>
+      <p class="subtitle">
+        Send an onchain tip with a kind message on Base.
+      </p>
+
+      <section class="card">
+        <label for="receiver">Receiver wallet (Base)</label>
+        <input
+          id="receiver"
+          placeholder="0x wallet address of the person you want to tip"
+          autocomplete="off"
+        />
+
+        <label for="amount">Tip amount (in ETH)</label>
+        <input
+          id="amount"
+          type="number"
+          step="0.0001"
+          min="0"
+          placeholder="example: 0.001"
+        />
+
+        <label for="message">Short message</label>
+        <textarea
+          id="message"
+          rows="2"
+          placeholder="example: Thanks for the helpful thread!"
+        ></textarea>
+
+        <button id="sendTipBtn" class="btn-primary">Send tip on Base</button>
+
+        <div id="preview" class="row-preview small-text"></div>
+      </section>
+
+      <section class="card">
+        <p class="small-text">
+          Enjoying TipChain? You can send a small tip to support the app
+          creator.
+        </p>
+        <p class="small-text" id="platformWalletText"></p>
+        <button id="tipCreatorBtn" class="btn-secondary">
+          Tip the app creator
+        </button>
+      </section>
+    </main>
+
+    <script>
+      // Change this to your own Base wallet address
+      const PLATFORM_WALLET = "0xF6F089d4CFca6200c1D00deB756300303915C136"; // 
+
+      const receiverInput = document.getElementById("receiver");
+      const amountInput = document.getElementById("amount");
+      const messageInput = document.getElementById("message");
+      const sendTipBtn = document.getElementById("sendTipBtn");
+      const previewEl = document.getElementById("preview");
+
+      const platformWalletText = document.getElementById("platformWalletText");
+      const tipCreatorBtn = document.getElementById("tipCreatorBtn");
+
+      platformWalletText.textContent =
+        "Creator wallet: " +
+        PLATFORM_WALLET.slice(0, 6) +
+        "..." +
+        PLATFORM_WALLET.slice(-4) +
+        " (on Base)";
+
+      function openBasePay(to, amountEth) {
+        const url =
+          "https://pay.base.org/" +
+          "?to=" +
+          encodeURIComponent(to) +
+          "&amount=" +
+          encodeURIComponent(amountEth) +
+          "&token=ETH";
+
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+
+      sendTipBtn.addEventListener("click", () => {
+        const receiver = receiverInput.value.trim();
+        const amount = parseFloat(amountInput.value || "0");
+        const msg = messageInput.value.trim();
+
+        if (!receiver || !receiver.startsWith("0x") || receiver.length < 10) {
+          alert("Please enter a valid receiver wallet address.");
+          return;
+        }
+
+        if (!amount || amount <= 0) {
+          alert("Please enter a valid tip amount.");
+          return;
+        }
+
+        // Show preview text (user can copy this to their cast/DM)
+        previewEl.innerHTML =
+          'Preview message: <span class="highlight">"' +
+          (msg || "Thanks for your work!") +
+          '"</span>';
+
+        openBasePay(receiver, amount.toString());
+      });
+
+      tipCreatorBtn.addEventListener("click", () => {
+        const defaultTip = "0.001"; // default tip amount in ETH for you
+        openBasePay(PLATFORM_WALLET, defaultTip);
+      });
+    </script>
+  </body>
+</html>
