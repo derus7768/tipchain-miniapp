@@ -5,7 +5,7 @@
     <title>TipChain Mini App</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- Optional: meta so this can be used as a Farcaster / Base mini app -->
+    <!-- Optional: Farcaster / Base mini app meta -->
     <meta
       name="fc:miniapp"
       content='{
@@ -97,16 +97,24 @@
         background: #38bdf8;
         color: #020617;
         font-weight: 600;
-        width: 100%;
-        margin-top: 6px;
       }
 
       .btn-secondary {
         background: #111827;
         color: #e5e7eb;
         border: 1px solid #374151;
+      }
+
+      .btn-full {
         width: 100%;
         margin-top: 6px;
+      }
+
+      .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
       }
 
       .small-text {
@@ -119,6 +127,19 @@
         font-weight: 600;
       }
 
+      .status {
+        font-size: 11px;
+        color: #9ca3af;
+      }
+
+      .status-ok {
+        color: #22c55e;
+      }
+
+      .status-bad {
+        color: #f97316;
+      }
+
       .row-preview {
         margin-top: 8px;
         padding-top: 6px;
@@ -128,10 +149,20 @@
   </head>
   <body>
     <main>
-      <h1>TipChain</h1>
-      <p class="subtitle">
-        Send an onchain tip with a kind message on Base.
-      </p>
+      <div class="row" style="margin-bottom: 8px;">
+        <div>
+          <h1>TipChain</h1>
+          <p class="subtitle">
+            Send an onchain tip with a kind message on Base.
+          </p>
+        </div>
+        <div style="text-align: right;">
+          <button id="connectBtn" class="btn-secondary" style="font-size: 11px;">
+            Connect wallet
+          </button>
+          <div id="walletInfo" class="status"></div>
+        </div>
+      </div>
 
       <section class="card">
         <label for="receiver">Receiver wallet (Base)</label>
@@ -150,14 +181,16 @@
           placeholder="example: 0.001"
         />
 
-        <label for="message">Short message</label>
+        <label for="message">Short message (optional)</label>
         <textarea
           id="message"
           rows="2"
           placeholder="example: Thanks for the helpful thread!"
         ></textarea>
 
-        <button id="sendTipBtn" class="btn-primary">Send tip on Base</button>
+        <button id="sendTipBtn" class="btn-primary btn-full">
+          Send tip from my wallet
+        </button>
 
         <div id="preview" class="row-preview small-text"></div>
       </section>
@@ -168,45 +201,192 @@
           creator.
         </p>
         <p class="small-text" id="platformWalletText"></p>
-        <button id="tipCreatorBtn" class="btn-secondary">
+        <button id="tipCreatorBtn" class="btn-secondary btn-full">
           Tip the app creator
         </button>
       </section>
     </main>
 
     <script>
-      // Change this to your own Base wallet address
+      // ==== CONFIG: change this to your own Base wallet ====
       const PLATFORM_WALLET = "0xF6F089d4CFca6200c1D00deB756300303915C136"; // 
+      // =====================================================
 
+      const BASE_CHAIN_ID = "0x2105"; // 8453 Base mainnet
+
+      const connectBtn = document.getElementById("connectBtn");
+      const walletInfo = document.getElementById("walletInfo");
       const receiverInput = document.getElementById("receiver");
       const amountInput = document.getElementById("amount");
       const messageInput = document.getElementById("message");
       const sendTipBtn = document.getElementById("sendTipBtn");
       const previewEl = document.getElementById("preview");
-
       const platformWalletText = document.getElementById("platformWalletText");
       const tipCreatorBtn = document.getElementById("tipCreatorBtn");
 
+      let currentAccount = null;
+      let currentChainId = null;
+
       platformWalletText.textContent =
-        "Creator wallet: " +
+        "Creator wallet (Base): " +
         PLATFORM_WALLET.slice(0, 6) +
         "..." +
-        PLATFORM_WALLET.slice(-4) +
-        " (on Base)";
+        PLATFORM_WALLET.slice(-4);
 
-      function openBasePay(to, amountEth) {
-        const url =
-          "https://pay.base.org/" +
-          "?to=" +
-          encodeURIComponent(to) +
-          "&amount=" +
-          encodeURIComponent(amountEth) +
-          "&token=ETH";
-
-        window.open(url, "_blank", "noopener,noreferrer");
+      function setStatus(text, ok) {
+        walletInfo.textContent = text;
+        walletInfo.classList.remove("status-ok", "status-bad");
+        if (ok === true) walletInfo.classList.add("status-ok");
+        if (ok === false) walletInfo.classList.add("status-bad");
       }
 
-      sendTipBtn.addEventListener("click", () => {
+      function toWeiHex(amountEth) {
+        const n = Number(amountEth);
+        if (!isFinite(n) || n <= 0) return null;
+        const wei = BigInt(Math.round(n * 1e18));
+        return "0x" + wei.toString(16);
+      }
+
+      async function connectWallet() {
+        if (typeof window.ethereum === "undefined") {
+          alert("Please install MetaMask or another Base-compatible wallet.");
+          return;
+        }
+
+        try {
+          const accounts = await window.ethereum.request({
+            method: "eth_requestAccounts"
+          });
+          currentAccount = accounts[0] || null;
+          currentChainId = await window.ethereum.request({
+            method: "eth_chainId"
+          });
+
+          if (!currentAccount) {
+            setStatus("Not connected", false);
+            return;
+          }
+
+          if (currentChainId === BASE_CHAIN_ID) {
+            setStatus(
+              "Connected: " +
+                currentAccount.slice(0, 6) +
+                "..." +
+                currentAccount.slice(-4) +
+                " on Base",
+              true
+            );
+          } else {
+            setStatus(
+              "Connected: " +
+                currentAccount.slice(0, 6) +
+                "..." +
+                currentAccount.slice(-4) +
+                " (wrong network)",
+              false
+            );
+          }
+        } catch (err) {
+          console.error(err);
+          alert("Wallet connection rejected.");
+        }
+      }
+
+      async function ensureBaseNetwork() {
+        if (!window.ethereum) return false;
+
+        currentChainId = await window.ethereum.request({
+          method: "eth_chainId"
+        });
+
+        if (currentChainId === BASE_CHAIN_ID) return true;
+
+        try {
+          await window.ethereum.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: BASE_CHAIN_ID }]
+          });
+          currentChainId = BASE_CHAIN_ID;
+          return true;
+        } catch (switchError) {
+          // If Base is not added yet, try adding it
+          if (switchError.code === 4902) {
+            try {
+              await window.ethereum.request({
+                method: "wallet_addEthereumChain",
+                params: [
+                  {
+                    chainId: BASE_CHAIN_ID,
+                    chainName: "Base Mainnet",
+                    rpcUrls: ["https://mainnet.base.org"],
+                    nativeCurrency: {
+                      name: "Base ETH",
+                      symbol: "ETH",
+                      decimals: 18
+                    },
+                    blockExplorerUrls: ["https://basescan.org"]
+                  }
+                ]
+              });
+              return true;
+            } catch (addError) {
+              console.error(addError);
+              return false;
+            }
+          } else {
+            console.error(switchError);
+            return false;
+          }
+        }
+      }
+
+      async function sendTransaction(to, amountEth) {
+        if (!window.ethereum) {
+          alert("Wallet not found. Please install MetaMask or Coinbase Wallet.");
+          return;
+        }
+
+        if (!currentAccount) {
+          await connectWallet();
+          if (!currentAccount) return;
+        }
+
+        const onBase = await ensureBaseNetwork();
+        if (!onBase) {
+          alert("Could not switch to Base network. Please switch manually.");
+          return;
+        }
+
+        const valueHex = toWeiHex(amountEth);
+        if (!valueHex) {
+          alert("Tip amount is invalid.");
+          return;
+        }
+
+        try {
+          const txHash = await window.ethereum.request({
+            method: "eth_sendTransaction",
+            params: [
+              {
+                from: currentAccount,
+                to,
+                value: valueHex
+              }
+            ]
+          });
+          console.log("Tx sent:", txHash);
+          alert("Tip transaction sent. Tx hash:\n" + txHash);
+        } catch (err) {
+          console.error(err);
+          alert("Transaction failed or rejected.");
+        }
+      }
+
+      connectBtn.addEventListener("click", () => {
+        connectWallet();
+      });
+
+      sendTipBtn.addEventListener("click", async () => {
         const receiver = receiverInput.value.trim();
         const amount = parseFloat(amountInput.value || "0");
         const msg = messageInput.value.trim();
@@ -215,25 +395,66 @@
           alert("Please enter a valid receiver wallet address.");
           return;
         }
-
         if (!amount || amount <= 0) {
-          alert("Please enter a valid tip amount.");
+          alert("Please enter a valid tip amount in ETH.");
           return;
         }
 
-        // Show preview text (user can copy this to their cast/DM)
         previewEl.innerHTML =
           'Preview message: <span class="highlight">"' +
           (msg || "Thanks for your work!") +
           '"</span>';
 
-        openBasePay(receiver, amount.toString());
+        await sendTransaction(receiver, amount);
       });
 
-      tipCreatorBtn.addEventListener("click", () => {
-        const defaultTip = "0.001"; // default tip amount in ETH for you
-        openBasePay(PLATFORM_WALLET, defaultTip);
+      tipCreatorBtn.addEventListener("click", async () => {
+        const defaultTip = 0.001; // you can change this default tip size
+        await sendTransaction(PLATFORM_WALLET, defaultTip);
       });
+
+      // Optional: react to wallet / network changes
+      if (typeof window.ethereum !== "undefined") {
+        window.ethereum.on("accountsChanged", (accounts) => {
+          currentAccount = accounts[0] || null;
+          if (!currentAccount) {
+            setStatus("Not connected", false);
+          } else {
+            setStatus(
+              "Connected: " +
+                currentAccount.slice(0, 6) +
+                "..." +
+                currentAccount.slice(-4),
+              null
+            );
+          }
+        });
+
+        window.ethereum.on("chainChanged", (chainId) => {
+          currentChainId = chainId;
+          if (currentAccount) {
+            if (chainId === BASE_CHAIN_ID) {
+              setStatus(
+                "Connected: " +
+                  currentAccount.slice(0, 6) +
+                  "..." +
+                  currentAccount.slice(-4) +
+                  " on Base",
+                true
+              );
+            } else {
+              setStatus(
+                "Connected: " +
+                  currentAccount.slice(0, 6) +
+                  "..." +
+                  currentAccount.slice(-4) +
+                  " (wrong network)",
+                false
+              );
+            }
+          }
+        });
+      }
     </script>
   </body>
 </html>
